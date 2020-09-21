@@ -1629,7 +1629,7 @@ int msm_venc_s_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		if (inst->state < MSM_VIDC_LOAD_RESOURCES)
 			msm_vidc_calculate_buffer_counts(inst);
 		if (inst->state == MSM_VIDC_START_DONE) {
-			rc = msm_venc_set_frame_rate(inst);
+			rc = msm_venc_set_frame_rate(inst, true);
 			if (rc)
 				s_vpr_e(sid, "%s: set frame rate failed\n",
 					__func__);
@@ -2033,7 +2033,7 @@ int msm_venc_set_frame_size(struct msm_vidc_inst *inst)
 	return rc;
 }
 
-int msm_venc_set_frame_rate(struct msm_vidc_inst *inst)
+int msm_venc_set_frame_rate(struct msm_vidc_inst *inst, bool external_requested)
 {
 	int rc = 0;
 	struct hfi_device *hdev;
@@ -2066,9 +2066,16 @@ int msm_venc_set_frame_rate(struct msm_vidc_inst *inst)
 
 	s_vpr_h(inst->sid, "%s: %#x\n", __func__, frame_rate.frame_rate);
 
-	rc = call_hfi_op(hdev, session_set_property,
-		inst->session, HFI_PROPERTY_CONFIG_FRAME_RATE,
+	if (external_requested) {
+		rc = call_hfi_op(hdev, session_set_property,
+			inst->session, HFI_PROPERTY_CONFIG_FRAME_RATE,
+			&frame_rate, sizeof(frame_rate));
+	} else {
+		s_vpr_l(inst->sid, "Auto frame rate set");
+		rc = call_hfi_op(hdev, session_set_property,
+		inst->session, HFI_PROPERTY_CONFIG_VENC_AUTO_FRAME_RATE,
 		&frame_rate, sizeof(frame_rate));
+	}
 	if (rc)
 		s_vpr_e(inst->sid, "%s: set property failed\n", __func__);
 
@@ -4666,7 +4673,7 @@ int msm_venc_set_properties(struct msm_vidc_inst *inst)
 	rc = msm_venc_set_frame_size(inst);
 	if (rc)
 		goto exit;
-	rc = msm_venc_set_frame_rate(inst);
+	rc = msm_venc_set_frame_rate(inst, true);
 	if (rc)
 		goto exit;
 	rc = msm_venc_set_secure_mode(inst);
