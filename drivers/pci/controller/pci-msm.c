@@ -7040,6 +7040,9 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	spin_unlock_irq(&pcie_dev->cfg_lock);
 	pcie_dev->link_status = MSM_PCIE_LINK_ENABLED;
 
+	/* resume access to MSI register as link is resumed */
+	msm_msi_config_access(dev_get_msi_domain(&pcie_dev->dev->dev), true);
+
 	enable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
 	mutex_unlock(&pcie_dev->setup_lock);
@@ -7105,6 +7108,9 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		ret = -EBUSY;
 		goto out;
 	}
+
+	/* suspend access to MSI register. resume access in drv_resume */
+	msm_msi_config_access(dev_get_msi_domain(&pcie_dev->dev->dev), false);
 
 	pcie_dev->user_suspend = true;
 	spin_lock_irq(&pcie_dev->cfg_lock);
