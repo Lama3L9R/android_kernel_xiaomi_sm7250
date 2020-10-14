@@ -592,8 +592,7 @@ int msm_vidc_get_encoder_internal_buffer_sizes(struct msm_vidc_inst *inst)
 			curr_req->buffer_size =
 				enc_calculators->calculate_scratch2_size(
 					inst, width, height, num_ref,
-					is_tenbit, is_downscale, rotation_val,
-					flip);
+					is_tenbit, is_downscale, rotation_val, flip);
 			valid_buffer_type = true;
 		} else if (curr_req->buffer_type ==
 			HAL_BUFFER_INTERNAL_PERSIST) {
@@ -1909,11 +1908,9 @@ static inline u32 calculate_enc_scratch2_size(struct msm_vidc_inst *inst,
 	 * and 192 x 16 aligned for 10-bit
 	 */
 		if (rotation_val == 90 || rotation_val == 270)
-			size += hfi_iris2_enc_dpb_buffer_size(height, width,
-					ten_bit);
+			size += hfi_iris2_enc_dpb_buffer_size(height, width, ten_bit);
 		else
-			size += hfi_iris2_enc_dpb_buffer_size(width, height,
-					ten_bit);
+			size += hfi_iris2_enc_dpb_buffer_size(width, height, ten_bit);
 		size += 4096;
 	}
 	return size;
