@@ -68,7 +68,6 @@ static DEFINE_SPINLOCK(time_sync_lock);
 #define FORCE_WAKE_DELAY_MIN_US			4000
 #define FORCE_WAKE_DELAY_MAX_US			6000
 #define FORCE_WAKE_DELAY_TIMEOUT_US		60000
-#define CNSS_MHI_MISSION_MODE_TIMEOUT		60000
 
 #define POWER_ON_RETRY_MAX_TIMES		3
 #define POWER_ON_RETRY_DELAY_MS			200
@@ -814,7 +813,6 @@ int cnss_pci_prevent_l1(struct device *dev)
 {
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 	struct cnss_pci_data *pci_priv = cnss_get_pci_priv(pci_dev);
-	int ret;
 
 	if (!pci_priv) {
 		cnss_pr_err("pci_priv is NULL\n");
@@ -831,13 +829,7 @@ int cnss_pci_prevent_l1(struct device *dev)
 		return -EIO;
 	}
 
-	ret = msm_pcie_prevent_l1(pci_dev);
-	if (ret) {
-		cnss_pr_err("Failed to prevent PCIe L1, considered as link down\n");
-		cnss_pci_link_down(dev);
-	}
-
-	return ret;
+	return msm_pcie_prevent_l1(pci_dev);
 }
 EXPORT_SYMBOL(cnss_pci_prevent_l1);
 
@@ -1152,7 +1144,6 @@ int cnss_pci_start_mhi(struct cnss_pci_data *pci_priv)
 {
 	int ret = 0;
 	struct cnss_plat_data *plat_priv;
-	unsigned int timeout = 0;
 
 	if (!pci_priv) {
 		cnss_pr_err("pci_priv is NULL\n");
@@ -1171,21 +1162,9 @@ int cnss_pci_start_mhi(struct cnss_pci_data *pci_priv)
 	if (ret)
 		goto out;
 
-	if (cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01) {
-		timeout = pci_priv->mhi_ctrl->timeout_ms;
-		pci_priv->mhi_ctrl->timeout_ms = CNSS_MHI_MISSION_MODE_TIMEOUT;
-	}
-
 	ret = cnss_pci_set_mhi_state(pci_priv, CNSS_MHI_POWER_ON);
-
-	if (cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01)
-		pci_priv->mhi_ctrl->timeout_ms = timeout;
-
-	/* -ETIMEDOUT means MHI power on has succeeded but timed out
-	 * for firmware mission mode event, so handle it properly.
-	 */
-	if (ret == -ETIMEDOUT)
-		ret = cnss_pci_handle_mhi_poweron_timeout(pci_priv);
+	if (ret)
+		goto out;
 
 	return 0;
 
