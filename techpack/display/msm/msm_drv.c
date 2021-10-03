@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -60,6 +61,9 @@
 #define MSM_VERSION_MAJOR	1
 #define MSM_VERSION_MINOR	3
 #define MSM_VERSION_PATCHLEVEL	0
+
+atomic_t resume_pending;
+wait_queue_head_t resume_wait_q;
 
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
@@ -323,6 +327,7 @@ static int vblank_ctrl_queue_work(struct msm_drm_private *priv,
 					int crtc_id, bool enable)
 {
 	struct vblank_work *cur_work;
+	struct drm_crtc *crtc;
 	struct kthread_worker *worker;
 
 	if (!priv || crtc_id >= priv->num_crtcs)
@@ -331,6 +336,8 @@ static int vblank_ctrl_queue_work(struct msm_drm_private *priv,
 	cur_work = kzalloc(sizeof(*cur_work), GFP_ATOMIC);
 	if (!cur_work)
 		return -ENOMEM;
+
+	crtc = priv->crtcs[crtc_id];
 
 	kthread_init_work(&cur_work->work, vblank_ctrl_worker);
 	cur_work->crtc_id = crtc_id;
@@ -1333,27 +1340,24 @@ static int msm_ioctl_register_event(struct drm_device *dev, void *data,
 	 * calls add to client list and return.
 	 */
 	count = msm_event_client_count(dev, req_event, false);
-	if (count) {
-		/* Add current client to list */
-		spin_lock_irqsave(&dev->event_lock, flag);
-		list_add_tail(&client->base.link, &priv->client_event_list);
-		spin_unlock_irqrestore(&dev->event_lock, flag);
+	/* Add current client to list */
+	spin_lock_irqsave(&dev->event_lock, flag);
+	list_add_tail(&client->base.link, &priv->client_event_list);
+	spin_unlock_irqrestore(&dev->event_lock, flag);
+
+	if (count)
 		return 0;
-	}
 
 	ret = msm_register_event(dev, req_event, file, true);
 	if (ret) {
 		DRM_ERROR("failed to enable event %x object %x object id %d\n",
 			req_event->event, req_event->object_type,
 			req_event->object_id);
-		kfree(client);
-	} else {
-		/* Add current client to list */
 		spin_lock_irqsave(&dev->event_lock, flag);
-		list_add_tail(&client->base.link, &priv->client_event_list);
+		list_del(&client->base.link);
 		spin_unlock_irqrestore(&dev->event_lock, flag);
+		kfree(client);
 	}
-
 	return ret;
 }
 
@@ -1493,13 +1497,6 @@ static int msm_release(struct inode *inode, struct file *filp)
 						false);
 		kfree(node);
 	}
-
-	/**
-	 * Handle preclose operation here for removing fb's whose
-	 * refcount > 1. This operation is not triggered from upstream
-	 * drm as msm_driver does not support DRIVER_LEGACY feature.
-	 */
-	msm_preclose(dev, file_priv);
 
 	return drm_release(inode, filp);
 }
@@ -1661,6 +1658,7 @@ static struct drm_driver msm_driver = {
 				DRIVER_ATOMIC |
 				DRIVER_MODESET,
 	.open               = msm_open,
+	.preclose           = msm_preclose,
 	.postclose          = msm_postclose,
 	.lastclose          = msm_lastclose,
 	.irq_handler        = msm_irq,
@@ -1697,6 +1695,20 @@ static struct drm_driver msm_driver = {
 };
 
 #ifdef CONFIG_PM_SLEEP
+
+static int msm_pm_prepare(struct device *dev)
+{
+	atomic_inc(&resume_pending);
+	return 0;
+}
+
+static void msm_pm_complete(struct device *dev)
+{
+	atomic_set(&resume_pending, 0);
+	wake_up_all(&resume_wait_q);
+	return;
+}
+
 static int msm_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev;
@@ -1782,6 +1794,8 @@ static int msm_runtime_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops msm_pm_ops = {
+	.prepare = msm_pm_prepare,
+	.complete = msm_pm_complete,
 	SET_SYSTEM_SLEEP_PM_OPS(msm_pm_suspend, msm_pm_resume)
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };

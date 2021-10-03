@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #define pr_fmt(fmt)	"[drm:%s] " fmt, __func__
@@ -2126,8 +2127,8 @@ struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
 		usleep_range(sleep, sleep * 2);
 		mutex_lock(&rm->rm_lock);
 	}
-	/* make sure to get latest rsvp_next to avoid use after free issues  */
-	return _sde_rm_get_rsvp_nxt(rm, enc);
+
+	return rsvp_nxt;
 }
 
 int sde_rm_reserve(
