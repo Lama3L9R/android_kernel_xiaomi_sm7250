@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2010-2014, 2016-2020 The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/kernel.h>
@@ -22,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/ipc_logging.h>
 #include <linux/of_platform.h>
-#include <linux/ratelimit.h>
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/scm.h>
 #include <soc/snd_event.h>
@@ -363,7 +363,6 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 	uint16_t w_len;
 	int rc;
 	unsigned long flags;
-	static DEFINE_RATELIMIT_STATE(rtl, 1 * HZ, 1);
 
 	if (!handle || !buf) {
 		pr_err("APR: Wrong parameters for %s\n",
@@ -377,8 +376,7 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 
 	if ((svc->dest_id == APR_DEST_QDSP6) &&
 	    (apr_get_q6_state() != APR_SUBSYS_LOADED)) {
-		if (__ratelimit(&rtl))
-			pr_err_ratelimited("%s: Still dsp is not Up\n", __func__);
+		pr_err_ratelimited("%s: Still dsp is not Up\n", __func__);
 		return -ENETRESET;
 	} else if ((svc->dest_id == APR_DEST_MODEM) &&
 		   (apr_get_modem_state() == APR_SUBSYS_DOWN)) {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/of_platform.h>
@@ -15,7 +16,6 @@
 #include <linux/pm_runtime.h>
 #include <soc/swr-common.h>
 #include <dsp/digital-cdc-rsc-mgr.h>
-#include <linux/ratelimit.h>
 #include "bolero-cdc.h"
 #include "internal.h"
 #include "bolero-clk-rsc.h"
@@ -1380,6 +1380,7 @@ static int bolero_probe(struct platform_device *pdev)
 	mutex_init(&priv->vote_lock);
 	INIT_WORK(&priv->bolero_add_child_devices_work,
 		  bolero_add_child_devices);
+	schedule_work(&priv->bolero_add_child_devices_work);
 
 	/* Register LPASS core hw vote */
 	lpass_core_hw_vote = devm_clk_get(&pdev->dev, "lpass_core_hw_vote");
@@ -1403,7 +1404,6 @@ static int bolero_probe(struct platform_device *pdev)
 	}
 	priv->lpass_audio_hw_vote = lpass_audio_hw_vote;
 
-	schedule_work(&priv->bolero_add_child_devices_work);
 	return 0;
 }
 
@@ -1426,7 +1426,6 @@ int bolero_runtime_resume(struct device *dev)
 {
 	struct bolero_priv *priv = dev_get_drvdata(dev->parent);
 	int ret = 0;
-	static DEFINE_RATELIMIT_STATE(rtl, 1 * HZ, 1);
 
 	mutex_lock(&priv->vote_lock);
 	if (priv->lpass_core_hw_vote == NULL) {
@@ -1455,9 +1454,8 @@ audio_vote:
 	if (priv->core_audio_vote_count == 0) {
 		ret = digital_cdc_rsc_mgr_hw_vote_enable(priv->lpass_audio_hw_vote);
 		if (ret < 0) {
-			if (__ratelimit(&rtl))
-				dev_err(dev, "%s:lpass audio hw enable failed\n",
-					__func__);
+			dev_err(dev, "%s:lpass audio hw enable failed\n",
+				__func__);
 			goto done;
 		}
 	}
